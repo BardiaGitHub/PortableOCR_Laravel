@@ -54,8 +54,6 @@ public class HomeActivity extends AppCompatActivity {
 
     LinearLayout scan, history;
     ConstraintLayout parent;
-    Button tips;
-    Switch uploadAutomatically;
     AlertDialog dialog;
     private Uri image_uri;
     SharedPreferences sharedPreferences;
@@ -76,15 +74,6 @@ public class HomeActivity extends AppCompatActivity {
         parent = findViewById(R.id.parent);
         scan = findViewById(R.id.scan);
         history = findViewById(R.id.history);
-        tips = findViewById(R.id.tipsButton);
-        uploadAutomatically = findViewById(R.id.uploadAutomatically);
-
-        sharedPreferences = HomeActivity.this.getSharedPreferences(getResources().getString(R.string.packageName), Context.MODE_PRIVATE);
-        if(sharedPreferences.getBoolean(getResources().getString(R.string.updateAutomatically), false) == true) {
-            uploadAutomatically.setChecked(true);
-        } else {
-            uploadAutomatically.setChecked(false);
-        }
 
         database = FirebaseDatabase.getInstance();
         reference = database.getReference();
@@ -122,32 +111,6 @@ public class HomeActivity extends AppCompatActivity {
                             .setMessage(getResources().getString(R.string.connectionMessage))
                             .setNeutralButton(getResources().getString(R.string.ok), null)
                             .show();
-                }
-            }
-        });
-
-        tips.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                LayoutInflater layoutInflater = LayoutInflater.from(HomeActivity.this);
-                LinearLayout layout = (LinearLayout) layoutInflater.inflate(getResources().getLayout(R.layout.help_layout_1), null);
-                new AlertDialog.Builder(HomeActivity.this)
-                        .setTitle(getResources().getString(R.string.tipsDialogTitle))
-                        .setView(layout)
-                        .setNeutralButton(getResources().getString(R.string.ok), null)
-                        .show();
-            }
-        });
-
-        uploadAutomatically.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override
-            public void onCheckedChanged(CompoundButton compoundButton, boolean b) {
-                sharedPreferences.edit().putBoolean(getResources().getString(R.string.updateAutomatically), b).commit();
-                Log.v("SWITCH", String.valueOf(b));
-                if (b) {
-                    Snackbar.make(parent, getResources().getString(R.string.updateAutoOn), Snackbar.LENGTH_LONG).show();
-                } else {
-                    Snackbar.make(parent, getResources().getString(R.string.updateAutoOff), Snackbar.LENGTH_LONG).show();
                 }
             }
         });
