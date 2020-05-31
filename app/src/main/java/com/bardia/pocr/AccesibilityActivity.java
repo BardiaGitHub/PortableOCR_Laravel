@@ -30,16 +30,18 @@ public class AccesibilityActivity extends AppCompatActivity {
         setContentView(R.layout.activity_accesibility);
 
         tips = findViewById(R.id.tipsButton);
-        uploadAutomatically = findViewById(R.id.uploadAutomatically);
+        //uploadAutomatically = findViewById(R.id.uploadAutomatically);
         parent = findViewById(R.id.parentAccesibility);
 
 
+        /*
         sharedPreferences = AccesibilityActivity.this.getSharedPreferences(getResources().getString(R.string.packageName), Context.MODE_PRIVATE);
         if(sharedPreferences.getBoolean(getResources().getString(R.string.updateAutomatically), false) == true) {
             uploadAutomatically.setChecked(true);
         } else {
             uploadAutomatically.setChecked(false);
         }
+        */
 
         tips.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -54,6 +56,7 @@ public class AccesibilityActivity extends AppCompatActivity {
             }
         });
 
+        /*
         uploadAutomatically.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
             public void onCheckedChanged(CompoundButton compoundButton, boolean b) {
@@ -65,7 +68,7 @@ public class AccesibilityActivity extends AppCompatActivity {
                     Snackbar.make(parent, getResources().getString(R.string.updateAutoOff), Snackbar.LENGTH_LONG).show();
                 }
             }
-        });
+        });*/
 
     }
 }

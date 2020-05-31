@@ -1,11 +1,8 @@
 package com.bardia.pocr;
 
-import androidx.annotation.NonNull;
-import androidx.appcompat.app.AlertDialog;
-import androidx.appcompat.app.AppCompatActivity;
-
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
@@ -15,13 +12,18 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
-import android.widget.Toast;
 
-import com.google.android.gms.tasks.OnCompleteListener;
-import com.google.android.gms.tasks.Task;
+import androidx.appcompat.app.AlertDialog;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.lifecycle.Observer;
+import androidx.lifecycle.ViewModelProviders;
+
+import com.bardia.pocr.model.User;
+import com.bardia.pocr.view.MainViewModel;
 import com.google.android.material.textfield.TextInputLayout;
-import com.google.firebase.auth.AuthResult;
-import com.google.firebase.auth.FirebaseAuth;
+import com.google.gson.Gson;
+
+import java.util.ArrayList;
 
 public class LoginActivity extends AppCompatActivity {
 
@@ -30,7 +32,10 @@ public class LoginActivity extends AppCompatActivity {
     EditText email, passwd;
     TextInputLayout emailLayout, passwdLayout;
 
-    FirebaseAuth firebaseAuth;
+    MainViewModel viewModel;
+    User myUser;
+    SharedPreferences sharedPreferences;
+    String password;
 
     AlertDialog loading;
 
@@ -38,8 +43,6 @@ public class LoginActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_login);
-
-        firebaseAuth = FirebaseAuth.getInstance();
 
         signIn = findViewById(R.id.login);
         toSignUp = findViewById(R.id.toRegister);
@@ -50,9 +53,13 @@ public class LoginActivity extends AppCompatActivity {
         emailLayout = findViewById(R.id.email);
         passwdLayout = findViewById(R.id.passwd);
 
+        viewModel = ViewModelProviders.of(this).get(MainViewModel.class);
+        sharedPreferences = getSharedPreferences(getPackageName(), MODE_PRIVATE);
+
         toSignUp.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
+                startActivity(new Intent(LoginActivity.this, MainActivity.class));
                 finish();
             }
         });
@@ -70,24 +77,8 @@ public class LoginActivity extends AppCompatActivity {
                     passwdLayout.setError(getResources().getString(R.string.inputError));
                     return;
                 }
-                firebaseAuth.signInWithEmailAndPassword(email.getText().toString().toLowerCase().trim(), passwd.getText().toString())
-                        .addOnCompleteListener(new OnCompleteListener<AuthResult>() {
-                            @Override
-                            public void onComplete(@NonNull Task<AuthResult> task) {
-                                if (task.isSuccessful()) {
-                                    loading.dismiss();
-                                    startActivity(new Intent(LoginActivity.this, HomeActivity.class));
-                                    finish();
-                                } else {
-                                    loading.dismiss();
-                                    new AlertDialog.Builder(LoginActivity.this)
-                                            .setTitle(getResources().getString(R.string.errorSigningInTitle))
-                                            .setMessage(getResources().getString(R.string.errorSigningInDesc))
-                                            .setNeutralButton(getResources().getString(R.string.ok), null)
-                                            .show();
-                                }
-                            }
-                        });
+                password = passwd.getText().toString();
+                viewModel.getUser(email.getText().toString().toLowerCase().trim()).observe(LoginActivity.this, observer());
             }
         });
 
@@ -134,5 +125,52 @@ public class LoginActivity extends AppCompatActivity {
                 .setView(layout)
                 .setCancelable(false);
         return builder;
+    }
+
+    public void errorMessage() {
+        new AlertDialog.Builder(LoginActivity.this)
+                .setTitle(getResources().getString(R.string.errorSigningInTitle))
+                .setMessage(getResources().getString(R.string.errorSigningInDesc))
+                .setNeutralButton(getResources().getString(R.string.ok), null)
+                .show();
+    }
+
+    Observer<ArrayList<User>> observer;
+
+    public Observer<ArrayList<User>> observer() {
+        if (observer == null) {
+            observer = new Observer<ArrayList<User>>() {
+                @Override
+                public void onChanged(ArrayList<User> users) {
+                    Log.v("OBSERVER", "response");
+                    if (users != null) {
+                        Log.v("OBSERVER", "users not null");
+                        if (users.size() > 0) {
+                            Log.v("OBSERVER", "user found");
+                            myUser = users.get(0);
+                            if(myUser.getPassword().equals(password)) {
+                                Log.v("OBSERVER", "user`s password correct");
+                                Gson gson = new Gson();
+                                String json = gson.toJson(myUser);
+                                sharedPreferences.edit().putString(getResources().getString(R.string.user), json).commit();
+                                loading.dismiss();
+                                startActivity(new Intent(LoginActivity.this, HomeActivity.class));
+                                finish();
+                            } else {
+                                loading.dismiss();
+                                errorMessage();
+                            }
+                        } else {
+                            loading.dismiss();
+                            errorMessage();
+                        }
+                    } else {
+                        loading.dismiss();
+                        errorMessage();
+                    }
+                }
+            };
+        }
+        return observer;
     }
 }

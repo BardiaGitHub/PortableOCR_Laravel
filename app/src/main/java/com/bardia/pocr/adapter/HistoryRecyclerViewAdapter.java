@@ -1,6 +1,7 @@
 package com.bardia.pocr.adapter;
 
 import android.content.Context;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -12,23 +13,25 @@ import androidx.annotation.NonNull;
 import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.bardia.pocr.HistoryActivity;
 import com.bardia.pocr.R;
-import com.bardia.pocr.model.TextObjectDecoded;
+import com.bardia.pocr.model.TextObject;
 
 import java.util.ArrayList;
 
 public class HistoryRecyclerViewAdapter extends RecyclerView.Adapter<HistoryRecyclerViewAdapter.ViewHolder>{
 
-    ArrayList<TextObjectDecoded> objectDecodedArrayList;
     HistoryRecyclerViewAdapter.OnItemClickListener itemClickListener, showDetail;
+    ArrayList<TextObject> textObjects;
+
     public interface OnItemClickListener {
-        void onItemClick(TextObjectDecoded objectDecoded, int adapterPosition);
+        void onItemClick(TextObject textObject, int adapterPosition);
     }
 
-    public HistoryRecyclerViewAdapter(ArrayList<TextObjectDecoded> objectDecodedArrayList,
+    public HistoryRecyclerViewAdapter(ArrayList<TextObject> textObjects,
                                       HistoryRecyclerViewAdapter.OnItemClickListener listener,
                                       HistoryRecyclerViewAdapter.OnItemClickListener showDetail) {
-        this.objectDecodedArrayList = objectDecodedArrayList;
+        this.textObjects = textObjects;
         this.itemClickListener = listener;
         this.showDetail = showDetail;
     }
@@ -43,44 +46,42 @@ public class HistoryRecyclerViewAdapter extends RecyclerView.Adapter<HistoryRecy
     }
 
     @Override
-    public void onBindViewHolder(@NonNull ViewHolder holder, final int position) {
-        if(objectDecodedArrayList.get(position).getText().length() < 50) {
-            holder.tvText.setText(objectDecodedArrayList.get(position).getText());
+    public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
+        Log.v("RECYCLERVIEW - VH", String.valueOf(position));
+        if(textObjects.get(position).getText().length() < 50) {
+            holder.tvText.setText(textObjects.get(position).getText());
         } else {
-            holder.tvText.setText(objectDecodedArrayList.get(position).getText().substring(0, 50).concat("[...]"));
+            holder.tvText.setText(textObjects.get(position).getText().substring(0, 45).concat("[...]"));
         }
-        holder.tvDate.setText(objectDecodedArrayList.get(position).getDate().substring(0, objectDecodedArrayList.get(position).getDate().length() - 3));
-        holder.imageView.setImageBitmap(objectDecodedArrayList.get(position).getImage());
+        holder.tvDate.setText(textObjects.get(position).getDate());
         holder.button.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                itemClickListener.onItemClick(objectDecodedArrayList.get(position), position);
+                itemClickListener.onItemClick(textObjects.get(position), position);
             }
         });
         holder.layout.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                showDetail.onItemClick(objectDecodedArrayList.get(position), position);
+                showDetail.onItemClick(textObjects.get(position), position);
             }
         });
     }
 
     @Override
     public int getItemCount() {
-        return objectDecodedArrayList.size();
+        return textObjects.size();
     }
 
     public class ViewHolder extends RecyclerView.ViewHolder {
         ConstraintLayout layout;
         TextView tvText, tvDate, tvEmpty;
-        ImageView imageView, emptyImage;
         ImageButton button;
         public ViewHolder(@NonNull View itemView) {
             super(itemView);
             layout = itemView.findViewById(R.id.historyItemLayout);
             tvText = itemView.findViewById(R.id.historyText);
             tvDate = itemView.findViewById(R.id.historyDate);
-            imageView = itemView.findViewById(R.id.historyImage);
             button = itemView.findViewById(R.id.deleteFromHistory);
         }
     }

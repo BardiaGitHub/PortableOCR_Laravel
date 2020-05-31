@@ -7,4 +7,5 @@
     <color name="homeLayout">#FFE7DD</color>
     <color name="secondaryTexts">#1B1B1B</color>
     <color name="historyItem">#FFA686</color>
+    <color name="noPendingItems">#ABC</color>
 </resources>

@@ -7,7 +7,7 @@ import androidx.room.OnConflictStrategy;
 import androidx.room.Query;
 import androidx.room.Update;
 
-import com.bardia.pocr.model.TextObjectEncodedOffline;
+import com.bardia.pocr.model.TextObject;
 
 import java.util.List;
 
@@ -15,19 +15,19 @@ import java.util.List;
 public interface TextObjectEncodedDAO {
 
     @Query("Select * from object")
-    List<TextObjectEncodedOffline> getEncodedObjectsList();
+    List<TextObject> getEncodedObjectsList();
 
-    @Query("Select * from object where nodeId = :nodeId")
-    TextObjectEncodedOffline getEncodedObject(String nodeId);
+    @Query("Select * from object where id = :id")
+    TextObject getEncodedObject(String id);
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    void insertEncodedObject(TextObjectEncodedOffline objectEncodedOffline);
+    void insertEncodedObject(TextObject objectEncodedOffline);
 
     @Update
-    void updateObjectEncoded(TextObjectEncodedOffline objectEncodedOffline);
+    void updateObjectEncoded(TextObject objectEncoded);
 
     @Delete
-    void deleteObjectEncoded(TextObjectEncodedOffline objectEncodedOffline);
+    void deleteObjectEncoded(TextObject objectEncoded);
 
     @Query("Delete from object")
     void deleteAllObjects();

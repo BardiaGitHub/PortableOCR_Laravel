@@ -1,12 +1,8 @@
 package com.bardia.pocr;
 
-import androidx.annotation.NonNull;
-import androidx.appcompat.app.AlertDialog;
-import androidx.appcompat.app.AppCompatActivity;
-import androidx.constraintlayout.widget.ConstraintLayout;
-
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
@@ -19,12 +15,16 @@ import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.Toast;
 
-import com.google.android.gms.tasks.OnCompleteListener;
-import com.google.android.gms.tasks.Task;
+import androidx.appcompat.app.AlertDialog;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.constraintlayout.widget.ConstraintLayout;
+import androidx.lifecycle.Observer;
+import androidx.lifecycle.ViewModelProviders;
+
+import com.bardia.pocr.model.User;
+import com.bardia.pocr.view.MainViewModel;
 import com.google.android.material.textfield.TextInputLayout;
-import com.google.firebase.auth.AuthResult;
-import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.auth.FirebaseUser;
+import com.google.gson.Gson;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -35,7 +35,9 @@ public class MainActivity extends AppCompatActivity {
 
     EditText email, passwd, repeatPasswd;
     TextInputLayout emailLayout, passwdLayout, repeatPasswdLayout;
-    FirebaseAuth fireBaseAuth;
+    MainViewModel viewModel;
+    User myUser;
+    SharedPreferences sharedPreferences;
 
     AlertDialog loading;
 
@@ -44,12 +46,14 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         layout = findViewById(R.id.layout);
-        //layout.setBackgroundColor(Color.parseColor("#2E2E2E"));
+        viewModel = ViewModelProviders.of(this).get(MainViewModel.class);
 
-        fireBaseAuth = FirebaseAuth.getInstance();
+        sharedPreferences = getSharedPreferences(getPackageName(), MODE_PRIVATE);
+        Gson gson = new Gson();
+        String json = sharedPreferences.getString(getResources().getString(R.string.user), "");
+        myUser = gson.fromJson(json, User.class);
 
-        FirebaseUser firebaseUser = fireBaseAuth.getCurrentUser();
-        if (firebaseUser != null) {
+        if (myUser != null) {
             startActivity(new Intent(MainActivity.this, HomeActivity.class));
             finish();
         }
@@ -70,6 +74,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onClick(View view) {
                 startActivity(new Intent(MainActivity.this, LoginActivity.class));
+                finish();
             }
         });
 
@@ -101,32 +106,9 @@ public class MainActivity extends AppCompatActivity {
                     repeatPasswdLayout.setError("");
                     return;
                 }
-                if (passwd.getText().toString().length() < 6) {
-                    passwdLayout.setError(getResources().getString(R.string.passwdSixChars));
-                    repeatPasswdLayout.setError("");
-                    return;
-                }
                 loading = loadingWindow(MainActivity.this).show();
-                fireBaseAuth.createUserWithEmailAndPassword(email.getText().toString().trim().toLowerCase(), passwd.getText().toString())
-                        .addOnCompleteListener(new OnCompleteListener<AuthResult>() {
-                            @Override
-                            public void onComplete(@NonNull Task<AuthResult> task) {
-                                if(task.isSuccessful()) {
-                                    loading.dismiss();
-                                    Toast.makeText(MainActivity.this, getResources().getString(R.string.successCreatingUser), Toast.LENGTH_LONG).show();
-                                    startActivity(new Intent(MainActivity.this, HomeActivity.class));
-                                    finish();
-                                } else {
-                                    Log.v("ERR", task.getException().toString());
-                                    loading.dismiss();
-                                    new AlertDialog.Builder(MainActivity.this)
-                                            .setTitle(getResources().getString(R.string.errorCreatingUserTitle))
-                                            .setMessage(getResources().getString(R.string.errorCreatingUserDesc))
-                                            .setNeutralButton(getResources().getString(R.string.ok), null)
-                                            .show();
-                                }
-                            }
-                        });
+                myUser = new User(0, email.getText().toString().toLowerCase().trim(), passwd.getText().toString());
+                viewModel.postUser(myUser).observe(MainActivity.this, observer());
             }
         });
 
@@ -190,5 +172,38 @@ public class MainActivity extends AppCompatActivity {
                 .setView(layout)
                 .setCancelable(false);
         return builder;
+    }
+
+    Observer<User> observer;
+
+    public Observer<User> observer() {
+        if (observer == null) {
+            observer = new Observer<User>() {
+                @Override
+                public void onChanged(User user) {
+                    Log.v("OBSERVER", "response");
+                    if (user != null) {
+                        Log.v("OBSERVER", "user created");
+                        myUser = user;
+                        Log.v("USER", myUser.toString());
+                        Gson gson = new Gson();
+                        String json = gson.toJson(myUser);
+                        sharedPreferences.edit().putString(getResources().getString(R.string.user), json).commit();
+                        loading.dismiss();
+                        Toast.makeText(MainActivity.this, getResources().getString(R.string.successCreatingUser), Toast.LENGTH_LONG).show();
+                        startActivity(new Intent(MainActivity.this, HomeActivity.class));
+                        finish();
+                    } else {
+                        loading.dismiss();
+                        new AlertDialog.Builder(MainActivity.this)
+                                .setTitle(getResources().getString(R.string.errorCreatingUserTitle))
+                                .setMessage(getResources().getString(R.string.errorCreatingUserDesc))
+                                .setNeutralButton(getResources().getString(R.string.ok), null)
+                                .show();
+                    }
+                }
+            };
+        }
+        return observer;
     }
 }

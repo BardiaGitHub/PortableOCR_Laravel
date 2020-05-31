@@ -6,6 +6,7 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.content.res.ColorStateList;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
@@ -16,10 +17,7 @@ import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
-import android.widget.Button;
-import android.widget.CompoundButton;
 import android.widget.LinearLayout;
-import android.widget.Switch;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -30,18 +28,22 @@ import androidx.appcompat.widget.Toolbar;
 import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import androidx.lifecycle.Observer;
+import androidx.lifecycle.ViewModelProviders;
 
 import com.bardia.pocr.database.TextObjectEncodedDatabase;
 import com.bardia.pocr.methods.Methods;
-import com.bardia.pocr.model.TextObjectEncodedOffline;
+import com.bardia.pocr.model.TextObject;
+import com.bardia.pocr.view.MainViewModel;
+import com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton;
+import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.android.material.snackbar.Snackbar;
-import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.database.DatabaseReference;
-import com.google.firebase.database.FirebaseDatabase;
 import com.theartofdev.edmodo.cropper.CropImage;
 import com.theartofdev.edmodo.cropper.CropImageView;
 
 import java.util.ArrayList;
+
+import retrofit2.converter.gson.GsonConverterFactory;
 
 import static android.Manifest.permission.CAMERA;
 import static android.Manifest.permission.WRITE_EXTERNAL_STORAGE;
@@ -52,17 +54,23 @@ public class HomeActivity extends AppCompatActivity {
     int IMAGE_PICK_GALLERY_CODE = 2;
     int IMAGE_PICK_CAMERA_CODE = 1;
 
-    LinearLayout scan, history;
+    LinearLayout scan, history, accesibility;
     ConstraintLayout parent;
     AlertDialog dialog;
     private Uri image_uri;
-    SharedPreferences sharedPreferences;
-    FirebaseDatabase database;
-    DatabaseReference reference;
-    ArrayList<TextObjectEncodedOffline> objects;
+
+    /*String simpleApostrophe = "\\\\" + "\\\\" + "\'";
+    String doubleApostrophe = "\\\\" + '\"';*/
+
+    ArrayList<TextObject> objects;
     TextObjectEncodedDatabase databaseOffline;
+    SharedPreferences sharedPreferences;
+
+    ExtendedFloatingActionButton upload;
 
     AlertDialog loading;
+
+    MainViewModel viewModel;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -74,11 +82,13 @@ public class HomeActivity extends AppCompatActivity {
         parent = findViewById(R.id.parent);
         scan = findViewById(R.id.scan);
         history = findViewById(R.id.history);
+        accesibility = findViewById(R.id.accesibility);
+        upload = findViewById(R.id.pendingItemsBt);
 
-        database = FirebaseDatabase.getInstance();
-        reference = database.getReference();
         databaseOffline = TextObjectEncodedDatabase.getInstance(HomeActivity.this);
+        sharedPreferences = getSharedPreferences(getPackageName(), MODE_PRIVATE);
 
+        viewModel = ViewModelProviders.of(this).get(MainViewModel.class);
 
         scan.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -114,16 +124,34 @@ public class HomeActivity extends AppCompatActivity {
                 }
             }
         });
+
+        accesibility.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                startActivity(new Intent(HomeActivity.this, AccesibilityActivity.class));
+            }
+        });
+
+        upload.setOnLongClickListener(new View.OnLongClickListener() {
+            @Override
+            public boolean onLongClick(View view) {
+                if(upload.isExtended()) {
+                    upload.shrink();
+                } else {
+                    upload.extend();
+                }
+                return true;
+            }
+        });
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        if (Methods.checkConnectivity(HomeActivity.this)) {
-            CheckOfflineObjects offlineObjects = new CheckOfflineObjects();
-            if (offlineObjects.getStatus() != AsyncTask.Status.RUNNING) {
-                offlineObjects.execute();
-            }
+        //new DeleteObjectFromOfflineDatabase().execute();
+        CheckOfflineObjects offlineObjects = new CheckOfflineObjects();
+        if (offlineObjects.getStatus() != AsyncTask.Status.RUNNING) {
+            offlineObjects.execute();
         }
     }
 
@@ -182,7 +210,7 @@ public class HomeActivity extends AppCompatActivity {
                     .setPositiveButton(getResources().getString(R.string.yes), new DialogInterface.OnClickListener() {
                         @Override
                         public void onClick(DialogInterface dialogInterface, int i) {
-                            FirebaseAuth.getInstance().signOut();
+                            sharedPreferences.edit().remove(getResources().getString(R.string.user)).commit();
                             startActivity(new Intent(HomeActivity.this, MainActivity.class));
                         }
                     })
@@ -278,7 +306,7 @@ public class HomeActivity extends AppCompatActivity {
                 Uri resultUri = result.getUri();
                 startActivity(new Intent(HomeActivity.this, ResultActivity.class)
                         .putExtra(getResources().getString(R.string.uri), resultUri.toString())
-                        .putExtra(getResources().getString(R.string.generatedKey), reference.push().getKey()));
+                        .putExtra(getResources().getString(R.string.generatedKey), Methods.randomKey()));
             } else if (resultCode == CropImage.CROP_IMAGE_ACTIVITY_RESULT_ERROR_CODE) {
                 Toast.makeText(HomeActivity.this, getResources().getString(R.string.errorImage), Toast.LENGTH_LONG).show();
             }
@@ -298,30 +326,118 @@ public class HomeActivity extends AppCompatActivity {
             super.onPostExecute(aVoid);
             if (objects.size() > 0) {
                 for (int i = 0; i < objects.size(); i++) {
-                    reference.child("users").child(FirebaseAuth.getInstance().getUid()).child(objects.get(i).nodeId).setValue(objects.get(i));
+                    Log.v("Offline database", objects.get(i).toString());
                 }
-                new DeleteObjectsFromOfflineDatabase().execute();
+                upload.setBackgroundTintList(ColorStateList.valueOf(getResources().getColor(R.color.colorPrimary)));
+                upload.setText(objects.size() + " " + getResources().getString(R.string.pendingItemsButton));
+                upload.setOnClickListener(pendingItems());
             } else {
                 Log.v("Offline database", "Database is empty");
+                upload.setBackgroundTintList(ColorStateList.valueOf(getResources().getColor(R.color.noPendingItems)));
+                upload.setText(getResources().getString(R.string.noPendingItemsButton));
+                upload.setOnClickListener(noPendingItems());
             }
         }
     }
 
-    public class DeleteObjectsFromOfflineDatabase extends AsyncTask<Void, Void, Void> {
+    public class DeleteObjectFromOfflineDatabase extends AsyncTask<Void, Void, Void> {
 
         @Override
         protected Void doInBackground(Void... voids) {
             databaseOffline.textObjectEncodedDAO().deleteAllObjects();
             return null;
         }
-
-        @Override
-        protected void onPostExecute(Void aVoid) {
-            Toast.makeText(HomeActivity.this, getResources().getString(R.string.offlineObjectsUploaded), Toast.LENGTH_LONG).show();
-            super.onPostExecute(aVoid);
-        }
     }
 
+    public AlertDialog.Builder loadingWindow(Context context) {
+        LayoutInflater li = LayoutInflater.from(HomeActivity.this);
+        LinearLayout layout = (LinearLayout) li.inflate(R.layout.loading_dialog, null);
+        AlertDialog.Builder builder = new AlertDialog.Builder(context)
+                .setTitle(getResources().getString(R.string.loadingTitle))
+                .setView(layout)
+                .setCancelable(false)
+                .setNegativeButton(getResources().getString(R.string.cancel), new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialogInterface, int i) {
+                        finish();
+                    }
+                });
+        return builder;
+    }
 
+    View.OnClickListener uploadListener;
+
+    public View.OnClickListener noPendingItems() {
+            uploadListener = new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                new AlertDialog.Builder(HomeActivity.this)
+                        .setTitle(getResources().getString(R.string.noPendingItemsTitle))
+                        .setMessage(getResources().getString(R.string.noPendingItemsMessage))
+                        .setNeutralButton(getResources().getString(R.string.ok), null)
+                        .show();
+            }
+        };
+        return uploadListener;
+    }
+
+    public View.OnClickListener pendingItems() {
+        uploadListener = new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                if (Methods.checkConnectivity(HomeActivity.this)) {
+                    new AlertDialog.Builder(HomeActivity.this)
+                            .setTitle(getResources().getString(R.string.itemsPendingTitle))
+                            .setMessage(getResources().getString(R.string.itemsPendingMessage))
+                            .setPositiveButton(getResources().getString(R.string.ok), new DialogInterface.OnClickListener() {
+                                @Override
+                                public void onClick(DialogInterface dialogInterface, int i) {
+                                    loading = loadingWindow(HomeActivity.this).show();
+                                    viewModel.postMultipleText(objects).observe(HomeActivity.this, observer());
+                                }
+                            })
+                            .setNegativeButton(getResources().getString(R.string.cancel), null)
+                            .show();
+                } else {
+                    new AlertDialog.Builder(HomeActivity.this)
+                            .setTitle(getResources().getString(R.string.connectionTitle))
+                            .setMessage(getResources().getString(R.string.connectionMessage))
+                            .setNeutralButton(getResources().getString(R.string.ok), null)
+                            .show();
+                }
+            }
+        };
+        return uploadListener;
+    }
+
+    androidx.lifecycle.Observer<Integer> observer;
+
+    public androidx.lifecycle.Observer<Integer> observer() {
+        if (observer == null) {
+            observer = new Observer<Integer>() {
+                @Override
+                public void onChanged(Integer integer) {
+                    if (integer != null) {
+                        if (integer == objects.size()) {
+                            Log.v("OBSERVER", String.valueOf(integer));
+                            new DeleteObjectFromOfflineDatabase().execute();
+                            objects = new ArrayList<>();
+                            upload.setBackgroundTintList(ColorStateList.valueOf(getResources().getColor(R.color.noPendingItems)));
+                            upload.setText(getResources().getString(R.string.noPendingItemsButton));
+                            upload.setOnClickListener(noPendingItems());
+                            loading.dismiss();
+                            Toast.makeText(HomeActivity.this, getResources().getString(R.string.offlineObjectsUploaded), Toast.LENGTH_LONG).show();
+                        } else {
+                            Toast.makeText(HomeActivity.this, getResources().getString(R.string.offlineObjectsUploadedSome), Toast.LENGTH_LONG).show();
+                        }
+                    } else {
+                        loading.dismiss();
+                        Toast.makeText(HomeActivity.this, getResources().getString(R.string.error), Toast.LENGTH_LONG).show();
+                    }
+                }
+            };
+        }
+        return observer;
+    }
 
 }

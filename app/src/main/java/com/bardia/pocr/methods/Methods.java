@@ -5,7 +5,12 @@ import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkInfo;
 
+import java.util.Random;
+import java.util.UUID;
+
 public class Methods {
+    private static final int MAX_LENGTH = 60;
+
     public static boolean checkConnectivity(Context context) {
         ConnectivityManager connMgr =
                 (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
@@ -25,5 +30,10 @@ public class Methods {
         } else {
             return false;
         }
+    }
+
+    public static String randomKey() {
+        String key = UUID.randomUUID().toString();
+        return key;
     }
 }

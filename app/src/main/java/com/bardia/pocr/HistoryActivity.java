@@ -5,6 +5,7 @@ import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.AsyncTask;
@@ -13,42 +14,45 @@ import android.util.Base64;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
+import android.view.animation.Animation;
+import android.view.animation.AnimationUtils;
 import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.lifecycle.Observer;
+import androidx.lifecycle.ViewModelProviders;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.bardia.pocr.adapter.HistoryRecyclerViewAdapter;
-import com.bardia.pocr.model.TextObjectDecoded;
-import com.bardia.pocr.model.TextObjectEncoded;
-import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.database.DataSnapshot;
-import com.google.firebase.database.DatabaseError;
-import com.google.firebase.database.DatabaseReference;
-import com.google.firebase.database.FirebaseDatabase;
-import com.google.firebase.database.Query;
-import com.google.firebase.database.ValueEventListener;
+import com.bardia.pocr.model.TextObject;
+import com.bardia.pocr.model.User;
+import com.bardia.pocr.view.MainViewModel;
+import com.google.android.material.floatingactionbutton.FloatingActionButton;
+import com.google.gson.Gson;
 
 import java.util.ArrayList;
 
 public class HistoryActivity extends AppCompatActivity {
 
-    ArrayList<TextObjectEncoded> objectEncodedArrayList = new ArrayList<>();
-    AlertDialog loading, dialog;
+    ArrayList<TextObject> textObjects = new ArrayList<>();
+    AlertDialog loading, dialog, loading2;
     RecyclerView recyclerView;
     HistoryRecyclerViewAdapter recyclerViewAdapter;
-    DatabaseReference databaseReference;
-    ArrayList<TextObjectDecoded> objectDecodedArrayList = new ArrayList<>();
+    FloatingActionButton reload;
+    SharedPreferences sharedPreferences;
+    User myUser;
+    public static int num;
 
     ImageView imageView;
     TextView textView;
+
+    MainViewModel viewModel;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -58,85 +62,83 @@ public class HistoryActivity extends AppCompatActivity {
         recyclerView = findViewById(R.id.historyRecycler);
         imageView = findViewById(R.id.emptyImg);
         textView = findViewById(R.id.emptyTv);
+        reload = findViewById(R.id.reload);
+
+        sharedPreferences = getSharedPreferences(getPackageName(), MODE_PRIVATE);
+        Gson gson = new Gson();
+        String json = sharedPreferences.getString(getResources().getString(R.string.user), "");
+        myUser = gson.fromJson(json, User.class);
+
+        viewModel = ViewModelProviders.of(this).get(MainViewModel.class);
 
         loading = loadingWindow(HistoryActivity.this).show();
         downloadData();
 
-    }
+        Animation animation = AnimationUtils.loadAnimation(this, R.anim.rotate_around_center_point);
+        reload.startAnimation(animation);
 
-    public void downloadData() {
-        databaseReference = FirebaseDatabase.getInstance().getReference().child("users").child(FirebaseAuth.getInstance().getUid());
-        databaseReference.addValueEventListener(new ValueEventListener() {
+        reload.setOnClickListener(new View.OnClickListener() {
             @Override
-            public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
-                Log.v("History", dataSnapshot.getChildrenCount() + " ");
-                objectEncodedArrayList = new ArrayList<>();
-                for (DataSnapshot postSnapshot : dataSnapshot.getChildren()) {
-                    objectEncodedArrayList.add(postSnapshot.getValue(TextObjectEncoded.class));
-                }
-                Log.v("LIST_OBJECTS", objectEncodedArrayList.size() + "");
-                DecodeObjects thread = new DecodeObjects(objectEncodedArrayList);
-                thread.execute();
-            }
-
-            @Override
-            public void onCancelled(@NonNull DatabaseError databaseError) {
-                Log.v("History", "Retrieving data failed");
+            public void onClick(View view) {
+                loading = loadingWindow(HistoryActivity.this).show();
+                downloadData();
             }
         });
     }
 
-    public class DecodeObjects extends AsyncTask<Void, Void, Void> {
+    public void downloadData() {
+        viewModel.getTexts(myUser.getId()).observe(HistoryActivity.this, observer());
+    }
 
-        ArrayList<TextObjectEncoded> objectEncodedArrayList;
+    Observer<ArrayList<TextObject>> observer;
 
-        public DecodeObjects(ArrayList<TextObjectEncoded> objectEncodedArrayList) {
-            this.objectEncodedArrayList = objectEncodedArrayList;
+    public Observer<ArrayList<TextObject>> observer() {
+        if (observer == null) {
+            observer = new Observer<ArrayList<TextObject>>() {
+                @Override
+                public void onChanged(ArrayList<TextObject> textObjects) {
+                    HistoryActivity.this.textObjects = textObjects;
+                    manageData();
+                }
+            };
         }
+        return observer;
+    }
 
-        @Override
-        protected Void doInBackground(Void... voids) {
-            byte[] imageBytes;
-            objectDecodedArrayList = new ArrayList<>();
-            for (int i = 0; i < objectEncodedArrayList.size(); i++) {
-                Log.v("LIST_OBJECTS", objectEncodedArrayList.get(i).getText());
-                imageBytes = Base64.decode(objectEncodedArrayList.get(i).getImage(), Base64.DEFAULT);
-                Bitmap decodedImage = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.length);
-                TextObjectDecoded objectDecoded = new TextObjectDecoded(
-                        objectEncodedArrayList.get(i).getText(),
-                        objectEncodedArrayList.get(i).getDate(),
-                        decodedImage);
-                objectDecodedArrayList.add(objectDecoded);
-            }
-            return null;
-        }
-
-        @Override
-        protected void onPostExecute(Void aVoid) {
-            if (objectDecodedArrayList.size() > 0) {
+    public void manageData() {
+        if (textObjects != null) {
+            Log.v("RECYCLERVIEW - data", "Not null");
+            recyclerViewAdapter = new HistoryRecyclerViewAdapter(textObjects, itemClickListener(), showItemDetail());
+            RecyclerView.LayoutManager layoutManager = new LinearLayoutManager(HistoryActivity.this);
+            recyclerView.setAdapter(recyclerViewAdapter);
+            recyclerView.setLayoutManager(layoutManager);
+            Log.v("RECYCLERVIEW - data", "ArrayList items: " + textObjects.size()
+                    + ", Adapter items: " + recyclerViewAdapter.getItemCount()
+                    + ", Recyclerview items: " + recyclerView.getAdapter().getItemCount());
+            if (textObjects.size() > 0) {
+                Log.v("RECYCLERVIEW - data", "Containing objects");
                 imageView.setVisibility(View.GONE);
                 textView.setVisibility(View.GONE);
-                recyclerViewAdapter = new HistoryRecyclerViewAdapter(objectDecodedArrayList, itemClickListener(), showItemDetail());
-                RecyclerView.LayoutManager layoutManager = new LinearLayoutManager(HistoryActivity.this);
-                recyclerView.setAdapter(recyclerViewAdapter);
-                recyclerView.setLayoutManager(layoutManager);
-                Log.v("RECYCLERVIEW", "ArrayList items: " + objectDecodedArrayList.size()
-                        + ", Adapter items: " + recyclerViewAdapter.getItemCount()
-                        + ", Recyclerview items: " + recyclerView.getAdapter().getItemCount());
                 loading.dismiss();
             } else {
+                Log.v("RECYCLERVIEW - data", "Empty");
                 imageView.setVisibility(View.VISIBLE);
                 textView.setVisibility(View.VISIBLE);
                 loading.dismiss();
             }
+        } else {
+            Log.v("RECYCLERVIEW - data", "Null");
+            imageView.setVisibility(View.VISIBLE);
+            textView.setVisibility(View.VISIBLE);
+            loading.dismiss();
         }
     }
 
     private HistoryRecyclerViewAdapter.OnItemClickListener showItemDetail() {
         HistoryRecyclerViewAdapter.OnItemClickListener listener = new HistoryRecyclerViewAdapter.OnItemClickListener() {
             @Override
-            public void onItemClick(TextObjectDecoded objectDecoded, int adapterPosition) {
-                dialog = itemDetail(HistoryActivity.this, objectDecoded).show();
+            public void onItemClick(TextObject object, int adapterPosition) {
+                dialog = itemDetail(HistoryActivity.this, object, adapterPosition).show();
             }
         };
         return listener;
@@ -162,31 +164,19 @@ public class HistoryActivity extends AppCompatActivity {
     public HistoryRecyclerViewAdapter.OnItemClickListener itemClickListener() {
         HistoryRecyclerViewAdapter.OnItemClickListener listener = new HistoryRecyclerViewAdapter.OnItemClickListener() {
             @Override
-            public void onItemClick(final TextObjectDecoded objectDecoded, final int adapterPosition) {
+            public void onItemClick(TextObject objectDecoded, int adapterPosition) {
                 new AlertDialog.Builder(HistoryActivity.this)
                         .setTitle(getResources().getString(R.string.deleteItemTitle))
                         .setMessage(getResources().getString(R.string.deleteItemMessage))
                         .setPositiveButton(getResources().getString(R.string.ok), new DialogInterface.OnClickListener() {
                             @Override
                             public void onClick(DialogInterface dialogInterface, int i) {
-                                DatabaseReference reference = FirebaseDatabase.getInstance().getReference();
-                                Query itemToDelete = reference.child("users").child(FirebaseAuth.getInstance().getUid()).orderByChild("date").equalTo(objectDecoded.getDate());
-                                itemToDelete.addListenerForSingleValueEvent(new ValueEventListener() {
-                                    @Override
-                                    public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
-                                        for (DataSnapshot snapshot: dataSnapshot.getChildren()) {
-                                            snapshot.getRef().removeValue();
-                                        }
-                                        objectDecodedArrayList.remove(adapterPosition);
-                                        recyclerViewAdapter.notifyItemRemoved(adapterPosition);
-                                        Toast.makeText(HistoryActivity.this, getResources().getString(R.string.deleteSuccess), Toast.LENGTH_LONG).show();
-                                    }
-                                    @Override
-                                    public void onCancelled(@NonNull DatabaseError databaseError) {
-                                        Toast.makeText(HistoryActivity.this, getResources().getString(R.string.deleteFailed), Toast.LENGTH_LONG).show();
-                                        Log.e("Error", "onCancelled", databaseError.toException());
-                                    }
-                                });
+                                loading2 = loadingWindow2(HistoryActivity.this).show();
+                                Log.v("RECYCLERVIEW - adapter", "pos: " + adapterPosition);
+                                viewModel.deleteText(objectDecoded.id).observe(HistoryActivity.this, deleteObserver());
+                                textObjects.remove(adapterPosition);
+                                recyclerViewAdapter.notifyItemRemoved(adapterPosition);
+                                recyclerViewAdapter.notifyDataSetChanged();
                             }
                         })
                         .setNegativeButton(getResources().getString(R.string.cancel), null)
@@ -196,17 +186,48 @@ public class HistoryActivity extends AppCompatActivity {
         return listener;
     }
 
-    public AlertDialog.Builder itemDetail(Context context, final TextObjectDecoded objectDecoded) {
+    androidx.lifecycle.Observer<Integer> deleteObserver;
+
+    public androidx.lifecycle.Observer<Integer> deleteObserver() {
+        if (deleteObserver == null) {
+            deleteObserver = new Observer<Integer>() {
+                @Override
+                public void onChanged(Integer integer) {
+                    try {
+                        if (integer == 1) {
+                            loading2.dismiss();
+                            Toast.makeText(HistoryActivity.this, getResources().getString(R.string.deleteSuccess), Toast.LENGTH_LONG).show();
+                            if (textObjects.size() == 0) {
+                                imageView.setVisibility(View.VISIBLE);
+                                textView.setVisibility(View.VISIBLE);
+                            }
+                        } else {
+                            loading2.dismiss();
+                            Toast.makeText(HistoryActivity.this, getResources().getString(R.string.deleteFailed), Toast.LENGTH_LONG).show();
+                        }
+                    } catch (Exception e) {
+                        loading2.dismiss();
+                        Toast.makeText(HistoryActivity.this, getResources().getString(R.string.error), Toast.LENGTH_LONG).show();
+                        e.printStackTrace();
+                    }
+                }
+            };
+        }
+        return deleteObserver;
+    }
+
+    public AlertDialog.Builder itemDetail(Context context, TextObject objectDecoded, int adapterPosition) {
         AlertDialog.Builder builder = new AlertDialog.Builder(context)
                 .setNeutralButton(getResources().getString(R.string.ok), null);
         LayoutInflater layoutInflater = LayoutInflater.from(context);
         LinearLayout layout = (LinearLayout) layoutInflater.inflate(getResources().getLayout(R.layout.history_item_detail_layout), null);
-        ImageView imageView = layout.findViewById(R.id.historyItemDetailImage);
         TextView textView = layout.findViewById(R.id.historyItemDetailText);
         Button button = layout.findViewById(R.id.historyCopyClipboard);
         Button share = layout.findViewById(R.id.historyShare);
-        imageView.setImageBitmap(objectDecoded.getImage());
+
+        builder.setTitle(objectDecoded.getDate().substring(0, objectDecoded.getDate().length() - 3));
         textView.setText(objectDecoded.getText());
+
         builder.setView(layout);
         button.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -223,13 +244,24 @@ public class HistoryActivity extends AppCompatActivity {
                 Intent sendIntent = new Intent();
                 sendIntent.setAction(Intent.ACTION_SEND);
                 sendIntent.putExtra(Intent.EXTRA_TEXT, objectDecoded.getText());
-                sendIntent.setType("text/plain");
+                sendIntent.setType(getResources().getString(R.string.sendIntentType));
 
                 Intent shareIntent = Intent.createChooser(sendIntent, null);
                 startActivity(shareIntent);
             }
         });
+        Log.v("RECYCLERVIEW - detail", objectDecoded.getId() + " pos: " + adapterPosition);
         dialog = builder.create();
+        return builder;
+    }
+
+    public AlertDialog.Builder loadingWindow2(Context context) {
+        LayoutInflater li = LayoutInflater.from(HistoryActivity.this);
+        LinearLayout layout = (LinearLayout) li.inflate(R.layout.loading_dialog, null);
+        AlertDialog.Builder builder = new AlertDialog.Builder(context)
+                .setTitle(getResources().getString(R.string.loadingTitle))
+                .setView(layout)
+                .setCancelable(false);
         return builder;
     }
 }
